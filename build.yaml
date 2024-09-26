@@ -1,0 +1,9 @@
+projectName: Nexis Dependency Manager
+type: program
+language: C++
+
+includes: on
+
+include: 
+  compiler: "config/Nexis/Compiler.yaml"
+

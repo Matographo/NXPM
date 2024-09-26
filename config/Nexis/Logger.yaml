@@ -1,0 +1,7 @@
+level: debug
+format: "[%^%l%$] %v"
+colors:
+  debug: cyan
+  info: blue
+  warning: yellow
+  error: red
