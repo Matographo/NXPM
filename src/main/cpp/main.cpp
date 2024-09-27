@@ -6,6 +6,7 @@
 #include "Downloader.h"
 #include "NxpmManager.h"
 
+// Main function to start and control the program
 int main (int argc, char *argv[]) {
   NxpmManager nxpmManager(argc, argv);
   

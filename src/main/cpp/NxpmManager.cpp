@@ -9,7 +9,7 @@ NxpmManager::NxpmManager(int argc, char **argv) {
     this->pmPath    = nexisPath + "/package-managers";
     this->dbPath    = nexisPath + "/databases";
     this->pkgPath   = nexisPath + "/packages";
-    this->nxdbPath  = dbPath    + "/nxpm";
+    this->nxdbPath  = dbPath    + "/nxpm/nxpm.db";
     
     this->program     = &argparse::ArgumentParser("nxpm");
     this->installer   = &argparse::ArgumentParser("install");
@@ -132,6 +132,7 @@ int NxpmManager::checkAndDownloadNxpmDb() {
 }
 
 int NxpmManager::loadPackageManager() {
+    std::string pahtToBuild = this->pmPath + "/" + this->target;
     std::string path = this->pmPath + "/" + this->target + ".so";
     if(!std::filesystem::exists(path)) {
         sqlite3_open(this->nxdbPath.c_str(), &this->db);
@@ -155,8 +156,9 @@ int NxpmManager::loadPackageManager() {
         std::string repo = (char *)sqlite3_column_text(this->stmt, 0);
         sqlite3_finalize(this->stmt);
 
-        this->downloader.downloadGit(repo, path);  // Hier noch implementieren dass die Datei auch richtig Heruntergeladen wird und nicht nur der Pfad erstellt wird
-                                                   // Ebenfalls muss der PM gebaut werden
+        this->downloader.downloadGit(repo, pahtToBuild);  // Hier noch implementieren dass die Datei auch richtig Heruntergeladen wird und nicht nur der Pfad erstellt wird
+                                                          // Ebenfalls muss der PM gebaut werden
+
     }
     
     this->library = loadDynamicLibrary(path);
@@ -231,5 +233,80 @@ int NxpmManager::checkAndInstallTools() {
             return 1;
         }
     } 
+    return 0;
+}
+
+int NxpmManager::createNewVersion(std::string version, bool isHash, std::string packageName, std::string pathToPackage, std::string pathToPackageVersion) {
+    std::filesystem::create_directories(pathToPackageVersion);
+    
+    std::string gitCommand = "git -C " + pathToPackage + "/.raw ";
+
+    if(isHash) {
+        gitCommand += "checkout " + version;
+    } else {
+        gitCommand += "checkout tags/" + version;
+    }
+    
+    if(system(gitCommand.c_str()) != 0) {
+        std::cerr << "Failed to checkout version " << version << " for package " << packageName << std::endl;
+        std::filesystem::remove_all(pathToPackageVersion);
+        return 1;
+    }
+
+    std::string pathToRepo = pathToPackage + "/.raw";
+    std::string pathToBuild = pathToPackage + "/build";
+    
+    std::filesystem::create_directories(pathToPackageVersion + "/include");
+    std::filesystem::create_directories(pathToPackageVersion + "/cpp");
+    std::filesystem::create_directories(pathToBuild);
+
+    if(std::filesystem::exists(pathToRepo + "/include")) {
+        std::filesystem::copy(pathToRepo + "/include", pathToPackageVersion + "/include", std::filesystem::copy_options::recursive);
+    } else {
+        for(const auto & entry : std::filesystem::directory_iterator(pathToRepo)) {
+            if(entry.path().extension() == ".h" || entry.path().extension() == ".hpp") {
+                std::filesystem::copy(entry.path(), pathToPackageVersion + "/include");
+            }
+        }
+    }
+    
+    std::string cmakeBuild = "cmake -S " + pathToRepo + " -B " + pathToBuild;
+    
+    if(system(cmakeBuild.c_str()) != 0) {
+        std::cerr << "Failed to generate build files for package " << packageName << std::endl;
+        std::filesystem::remove_all(pathToPackageVersion);
+        std::filesystem::remove_all(pathToBuild);
+        return 1;
+    }
+    
+    std::string makeBuild = "make -C " + pathToBuild;
+    
+    if(system(makeBuild.c_str()) != 0) {
+        std::cerr << "Failed to build package " << packageName << std::endl;
+        std::filesystem::remove_all(pathToPackageVersion);
+        std::filesystem::remove_all(pathToBuild);
+        return 1;
+    }
+    
+    std::string libraryFile;
+    std::string libraryExtention;
+
+    for(const auto & entry : std::filesystem::directory_iterator(pathToBuild)) {
+        libraryExtention = entry.path().extension();
+        if(libraryExtention == ".so" || libraryExtention == ".a" || libraryExtention == ".dll" || libraryExtention == ".lib") {
+            libraryFile = entry.path();
+            break;
+        }
+    }
+    if(libraryFile == "") {
+        std::cerr << "No library file found for package " << packageName << std::endl;
+        std::filesystem::remove_all(pathToPackageVersion);
+        std::filesystem::remove_all(pathToBuild);
+        return 1;
+    }
+    
+    std::filesystem::copy(libraryFile, pathToPackageVersion + "/cpp");
+    
+    std::filesystem::remove_all(pathToBuild);
     return 0;
 }
