@@ -197,10 +197,10 @@ int NxpmManager::runCommand() {
 }
 
 int NxpmManager::checkAndInstallTools() {
-    std::string gitString = "git --version > /dev/null 2>&1";
     std::string cmakeString = "cmake --version > /dev/null 2>&1";
-    std::string makeString = "make --version > /dev/null 2>&1";
-    std::string gppString = "g++ --version > /dev/null 2>&1";
+    std::string makeString  = "make --version > /dev/null 2>&1";
+    std::string gitString   = "git --version > /dev/null 2>&1";
+    std::string gppString   = "g++ --version > /dev/null 2>&1";
     
     sys sys;
     
