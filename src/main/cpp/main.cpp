@@ -4,6 +4,7 @@
 #include "DynamicLibraryLoader.h"
 #include "PackageManager.h"
 #include "Downloader.h"
+#include "NxpmManager.h"
 
 int main (int argc, char *argv[]) {
   std::string homePath = getenv("HOME");
