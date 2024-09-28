@@ -11,13 +11,13 @@ NxpmManager::NxpmManager(int argc, char **argv) {
     this->pkgPath   = nexisPath + "/packages";
     this->nxdbPath  = dbPath    + "/nxpm/nxpm.db";
     
-    this->program     = &argparse::ArgumentParser("nxpm");
-    this->installer   = &argparse::ArgumentParser("install");
-    this->uninstaller = &argparse::ArgumentParser("uninstall");
-    this->updater     = &argparse::ArgumentParser("update");
-    this->searcher    = &argparse::ArgumentParser("search");
-    this->lister      = &argparse::ArgumentParser("list");
-    this->finder      = &argparse::ArgumentParser("find");
+    this->program     = new argparse::ArgumentParser("nxpm");
+    this->installer   = new argparse::ArgumentParser("install");
+    this->uninstaller = new argparse::ArgumentParser("uninstall");
+    this->updater     = new argparse::ArgumentParser("update");
+    this->searcher    = new argparse::ArgumentParser("search");
+    this->lister      = new argparse::ArgumentParser("list");
+    this->finder      = new argparse::ArgumentParser("find");
     
     this->installer->add_argument("package")
         .nargs(argparse::nargs_pattern::at_least_one)
@@ -98,45 +98,41 @@ int NxpmManager::parseArguments() {
 
 
 int NxpmManager::checkAndCreatePaths() {
-    bool mustDownload = false;
     if(!std::filesystem::exists(this->nexisPath)) {
         std::filesystem::create_directory(this->nexisPath);
-        mustDownload = true;
     }
     
     if(!std::filesystem::exists(this->pmPath)) {
         std::filesystem::create_directory(this->pmPath);
-        mustDownload = true;
     }
 
     if(!std::filesystem::exists(this->dbPath)) {
         std::filesystem::create_directory(this->dbPath);
-        mustDownload = true;
     }
 
     if(!std::filesystem::exists(this->pkgPath)) {
         std::filesystem::create_directory(this->pkgPath);
-        mustDownload = true;
     }
 
-    return (mustDownload) ? 1 : 0;
+    return 0;
 }
 
 int NxpmManager::checkAndDownloadNxpmDb() {
     if(!std::filesystem::exists(this->nxdbPath)) {
         std::string gitRepo = "Matographo/Nexis-NXPM-Database";
         std::string path = this->nxdbPath;
+        path = path.substr(0, path.find_last_of("/"));
         return downloader.downloadGit(gitRepo, path);
     }
     return 0;
 }
 
 int NxpmManager::loadPackageManager() {
-    std::string pahtToBuild = this->pmPath + "/" + this->target;
+    std::string pathToBuild = this->pmPath + "/" + this->target;
     std::string path = this->pmPath + "/" + this->target + ".so";
     if(!std::filesystem::exists(path)) {
         sqlite3_open(this->nxdbPath.c_str(), &this->db);
-        std::string sqlSelect = "SELECT repo FROM pm WHERE name = ?";
+        std::string sqlSelect = "SELECT repo FROM nxpm WHERE pm = ?";
         
         sqlite3_prepare_v2(
             this->db,
@@ -156,15 +152,32 @@ int NxpmManager::loadPackageManager() {
         std::string repo = (char *)sqlite3_column_text(this->stmt, 0);
         sqlite3_finalize(this->stmt);
 
-        this->downloader.downloadGit(repo, pahtToBuild);  // Hier noch implementieren dass die Datei auch richtig Heruntergeladen wird und nicht nur der Pfad erstellt wird
-                                                          // Ebenfalls muss der PM gebaut werden
+        this->downloader.downloadGit(repo, pathToBuild);  
+        std::string cmakeBuild = "cmake -S " + pathToBuild + " -B " + pathToBuild + "/build";
+        
+        if(system(cmakeBuild.c_str()) != 0) {
+            std::cerr << "Failed to generate build files for package manager " << this->target << std::endl;
+            return 1;
+        }
 
+        std::string makeBuild = "make -C " + pathToBuild + "/build";
+
+        if(system(makeBuild.c_str()) != 0) {
+            std::cerr << "Failed to build package manager " << this->target << std::endl;
+            return 1;
+        }
+
+        std::filesystem::copy(pathToBuild + "/build/lib" + this->target + ".so", path);
     }
     
     this->library = loadDynamicLibrary(path);
+    return 0;
 }
 
 int NxpmManager::runCommand() {
+    if(this->packages.size() == 0) {
+        return 0;
+    }
     if(this->command == "install") {
         if(packages.size() == 1) {
             return library->install(packages[0]);
@@ -309,4 +322,34 @@ int NxpmManager::createNewVersion(std::string version, bool isHash, std::string 
     
     std::filesystem::remove_all(pathToBuild);
     return 0;
+}
+
+int NxpmManager::findMissingPackages() {
+    std::vector<std::string>* missingPackages = new std::vector<std::string>();
+    for(const auto & entry : this->packages) {
+        NxpmManager::Package package = getPackage(entry);
+        std::string pathToPackage = this->pkgPath + "/" + this->target + "/" + package.name + "/" + package.version;
+        if(std::filesystem::exists(pathToPackage + "/cpp") && std::filesystem::exists(pathToPackage + "/include")) {
+            continue;
+        }
+        missingPackages->push_back(entry);
+    }
+    
+    this->packages = *missingPackages;
+    delete missingPackages;
+    return 0;
+}
+
+NxpmManager::Package NxpmManager::getPackage(std::string packageName) {
+    NxpmManager::Package package;
+    if(packageName.find("@") != std::string::npos) {
+        package.version = packageName.substr(packageName.find("@") + 1);
+        package.name = packageName.substr(0, packageName.find("@"));
+        return package;
+    } else if(packageName.find("#") != std::string::npos) {
+        package.version = packageName.substr(packageName.find("#") + 1);
+        package.name = packageName.substr(0, packageName.find("#"));
+        return package;
+    }
+    return package;
 }

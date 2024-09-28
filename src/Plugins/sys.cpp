@@ -69,6 +69,8 @@ int sys::install(std::vector<std::string> packages) {
         command += package;
     }
     
+    command += " -y";
+    
     return std::system(command.c_str());
 }
 

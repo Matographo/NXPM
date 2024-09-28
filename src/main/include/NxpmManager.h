@@ -17,6 +17,10 @@
  */
 class NxpmManager {
     private:
+        struct Package {
+            std::string name;
+            std::string version;
+        };
         // Program arguments
         int argc;
         char **argv;
@@ -54,9 +58,9 @@ class NxpmManager {
         // Package manager
         PackageManager * library;
         
-        
         // Functions
         int createNewVersion(std::string version, bool isHash, std::string packageName, std::string pathToPackage, std::string pathToPackageVersion);
+        Package getPackage(std::string packageName);
     
     public:
         NxpmManager(int argc, char **argv);
@@ -86,6 +90,11 @@ class NxpmManager {
          * Load the package manager
          */
         int loadPackageManager();
+        
+        /**
+         * Find all missing packages
+         */
+        int findMissingPackages();
         
         /**
          * Run the command given by the user with the given packages and load the package manager
